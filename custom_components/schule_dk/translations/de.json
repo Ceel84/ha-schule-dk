@@ -1,0 +1,29 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "schule.dk - Anmeldung",
+        "description": "Bitte wähle deine Schule aus und gib deine Zugangsdaten für das Digitale Klassenbuch ein.",
+        "data": {
+          "school": "Schule",
+          "username": "Benutzername",
+          "password": "Passwort"
+        }
+      },
+      "select_child": {
+        "title": "schule.dk - Kind auswählen",
+        "description": "Bitte wähle das Kind aus, dessen Stundenplan in Home Assistant integriert werden soll.",
+        "data": {
+          "child_id": "Kind"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Ungültige Anmeldedaten oder Schule nicht gefunden.",
+      "cannot_connect": "Verbindung zu schule.dk fehlgeschlagen."
+    },
+    "abort": {
+      "already_configured": "Dieses Konto/Kind ist bereits konfiguriert."
+    }
+  }
+}
