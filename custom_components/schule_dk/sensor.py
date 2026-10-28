@@ -3,6 +3,8 @@
 import logging
 from datetime import timedelta
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity
@@ -22,11 +24,24 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     class SchuleDkApiClient:
         def __init__(self):
             self.session = requests.Session()
+            
+            # Retry-Strategie bei Verbindungsabbrüchen
+            retries = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
+            adapter = HTTPAdapter(max_retries=retries)
+            self.session.mount("https://", adapter)
+            self.session.mount("http://", adapter)
+
+            # Echte Browser-Header mitsenden, um "Connection reset by peer" zu vermeiden
             self.headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Referer": "https://schule.dk/",
-                "Origin": "https://schule.dk",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
                 "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Origin": "https://schule.dk",
+                "Referer": "https://schule.dk/",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-site",
+                "Connection": "keep-alive",
             }
 
         def fetch_plan(self):
@@ -38,22 +53,27 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     "password": config[CONF_PASSWORD],
                 }
                 
-                res = self.session.post(login_url, json=login_payload, headers=self.headers, timeout=10)
+                _LOGGER.info("Sende Login-Anfrage an %s", login_url)
+                res = self.session.post(login_url, json=login_payload, headers=self.headers, timeout=15)
+                
                 if not res.ok:
-                    _LOGGER.error("Re-Auth fehlgeschlagen: Status %s", res.status_code)
+                    _LOGGER.error("Login fehlgeschlagen! Status: %s, Antwort: %s", res.status_code, res.text)
                     return None
 
                 data = res.json()
                 token = data.get("token") or data.get("jwt") or data.get("accessToken")
                 if token:
                     self.headers["Authorization"] = f"Bearer {token}"
+                    _LOGGER.info("Login für %s erfolgreich.", child_name)
 
-                # 2. Stundenplan / Vertretungsplan abrufen (offset 0 und 1)
+                # 2. Stundenplan / Vertretungsplan abrufen
                 url_w1 = f"https://{subdomain}.schule.dk/personal/module/plan/vertretungsplan?kind={child_id}&offset=0"
                 url_w2 = f"https://{subdomain}.schule.dk/personal/module/plan/vertretungsplan?kind={child_id}&offset=1"
 
-                res_w1 = self.session.get(url_w1, headers=self.headers, timeout=10)
-                res_w2 = self.session.get(url_w2, headers=self.headers, timeout=10)
+                res_w1 = self.session.get(url_w1, headers=self.headers, timeout=15)
+                res_w2 = self.session.get(url_w2, headers=self.headers, timeout=15)
+
+                _LOGGER.info("Status Abruf %s -> W1: %s, W2: %s", child_name, res_w1.status_code, res_w2.status_code)
 
                 json_w1 = res_w1.json() if res_w1.ok else {}
                 json_w2 = res_w2.json() if res_w2.ok else {}
@@ -61,14 +81,15 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 return {
                     "woche_aktuell": self._parse_schule_dk_json(json_w1),
                     "woche_naechste": self._parse_schule_dk_json(json_w2),
+                    "raw_w1": json_w1,
                 }
 
             except Exception as err:
-                _LOGGER.error("Fehler beim Abruf des Stundenplans für %s: %s", child_name, err)
+                _LOGGER.error("Ausnahme beim Abruf des Stundenplans für %s: %s", child_name, err)
                 return None
 
         def _parse_schule_dk_json(self, raw_data):
-            """Liest das schule.dk Objekt-Format aus und bildet eine übersichtliche Tages-Stunden-Struktur."""
+            """Liest das schule.dk Objekt-Format aus."""
             stundenplan_woche = []
             
             if not isinstance(raw_data, dict):
@@ -130,7 +151,8 @@ class SchuleDkStundenplanSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def state(self):
-        if self.coordinator.data and self.coordinator.data.get("woche_aktuell"):
+        data = self.coordinator.data or {}
+        if data.get("woche_aktuell") or data.get("raw_w1"):
             return "Aktiv"
         return "Keine Daten"
 
@@ -142,4 +164,5 @@ class SchuleDkStundenplanSensor(CoordinatorEntity, SensorEntity):
             "schule": self._config_entry.data[CONF_SCHOOL],
             "diese_woche": data.get("woche_aktuell"),
             "naechste_woche": data.get("woche_naechste"),
+            "raw_w1": data.get("raw_w1"),
         }
