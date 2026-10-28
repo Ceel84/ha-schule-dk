@@ -1,11 +1,10 @@
 {
   "domain": "schule_dk",
   "name": "Digitales Klassenbuch (schule.dk)",
+  "documentation": "https://github.com/",
+  "dependencies": [],
   "codeowners": [],
-  "config_flow": true,
-  "documentation": "https://schule.dk",
-  "iot_class": "cloud_polling",
-  "issue_tracker": "https://schule.dk",
-  "requirements": ["requests"],
-  "version": "1.0.4"
+  "requirements": [],
+  "version": "1.0.5",
+  "iot_class": "cloud_polling"
 }
