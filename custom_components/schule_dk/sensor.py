@@ -31,7 +31,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             self.session.mount("https://", adapter)
             self.session.mount("http://", adapter)
 
-            # Echte Browser-Header mitsenden, um "Connection reset by peer" zu vermeiden
+            # Echte Browser-Header mitsenden
             self.headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
                 "Accept": "application/json, text/plain, */*",
@@ -53,7 +53,6 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     "password": config[CONF_PASSWORD],
                 }
                 
-                _LOGGER.info("Sende Login-Anfrage an %s", login_url)
                 res = self.session.post(login_url, json=login_payload, headers=self.headers, timeout=15)
                 
                 if not res.ok:
@@ -64,7 +63,6 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 token = data.get("token") or data.get("jwt") or data.get("accessToken")
                 if token:
                     self.headers["Authorization"] = f"Bearer {token}"
-                    _LOGGER.info("Login für %s erfolgreich.", child_name)
 
                 # 2. Stundenplan / Vertretungsplan abrufen
                 url_w1 = f"https://{subdomain}.schule.dk/personal/module/plan/vertretungsplan?kind={child_id}&offset=0"
@@ -73,14 +71,12 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 res_w1 = self.session.get(url_w1, headers=self.headers, timeout=15)
                 res_w2 = self.session.get(url_w2, headers=self.headers, timeout=15)
 
-                _LOGGER.info("Status Abruf %s -> W1: %s, W2: %s", child_name, res_w1.status_code, res_w2.status_code)
-
                 json_w1 = res_w1.json() if res_w1.ok else {}
                 json_w2 = res_w2.json() if res_w2.ok else {}
 
                 return {
-                    "woche_aktuell": self._parse_schule_dk_json(json_w1),
-                    "woche_naechste": self._parse_schule_dk_json(json_w2),
+                    "woche_aktuell": self._parse_schule_dk_json(json_w1, child_name),
+                    "woche_naechste": self._parse_schule_dk_json(json_w2, child_name),
                     "raw_w1": json_w1,
                 }
 
@@ -88,16 +84,22 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 _LOGGER.error("Ausnahme beim Abruf des Stundenplans für %s: %s", child_name, err)
                 return None
 
-        def _parse_schule_dk_json(self, raw_data):
-            """Liest das schule.dk Objekt-Format aus."""
+        def _parse_schule_dk_json(self, raw_data, child_name):
+            """Liest das schule.dk Objekt-Format aus und loggt die Struktur."""
             stundenplan_woche = []
             
             if not isinstance(raw_data, dict):
+                _LOGGER.warning("[%s] raw_data ist kein Dictionary, sondern: %s", child_name, type(raw_data))
                 return stundenplan_woche
 
+            _LOGGER.info("[%s] API Schlüssel vorhanden: %s", child_name, list(raw_data.keys()))
+
             wochen_liste = raw_data.get("wochen", [])
+            _LOGGER.info("[%s] Anzahl Wochen in API-Antwort: %s", child_name, len(wochen_liste))
+
             for woche in wochen_liste:
                 tage_liste = woche.get("tage", [])
+                _LOGGER.info("[%s] Gefundene Tage in Woche: %s", child_name, len(tage_liste))
                 for tag in tage_liste:
                     datum = tag.get("datum", "")
                     units = tag.get("units", [])
