@@ -16,7 +16,7 @@ _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(minutes=15)
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
-    _LOGGER.info("=== SCHULE.DK: Starte Setup für Eintrag %s ===", config_entry.entry_id)
+    _LOGGER.info("=== SCHULE.DK SENSOR: Setup für Kind-ID %s gestartet ===", config_entry.data.get(CONF_CHILD_ID))
     config = config_entry.data
     child_id = config.get(CONF_CHILD_ID)
     child_name = config.get("child_name", "Stundenplan")
@@ -42,17 +42,15 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         def fetch_plan(self):
             _LOGGER.info("[%s] Starte fetch_plan Abruf...", child_name)
             try:
-                # 1. Login durchführen
                 login_url = f"https://{subdomain}.schule.dk/auth/authenticate"
                 login_payload = {
                     "username": config[CONF_USERNAME],
                     "password": config[CONF_PASSWORD],
                 }
                 
-                _LOGGER.info("[%s] Sende Login an %s", child_name, login_url)
                 res = self.session.post(login_url, json=login_payload, headers=self.headers, timeout=15)
-                
                 _LOGGER.info("[%s] Login HTTP Status: %s", child_name, res.status_code)
+                
                 if not res.ok:
                     _LOGGER.error("[%s] Login fehlgeschlagen! Antwort: %s", child_name, res.text)
                     return {"woche_aktuell": [], "woche_naechste": [], "error": f"Login Status {res.status_code}"}
@@ -61,13 +59,10 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 token = data.get("token") or data.get("jwt") or data.get("accessToken")
                 if token:
                     self.headers["Authorization"] = f"Bearer {token}"
-                    _LOGGER.info("[%s] Token erfolgreich gesetzt.", child_name)
 
-                # 2. Stundenplan / Vertretungsplan abrufen
                 url_w1 = f"https://{subdomain}.schule.dk/personal/module/plan/vertretungsplan?kind={child_id}&offset=0"
                 url_w2 = f"https://{subdomain}.schule.dk/personal/module/plan/vertretungsplan?kind={child_id}&offset=1"
 
-                _LOGGER.info("[%s] Hole W1 von: %s", child_name, url_w1)
                 res_w1 = self.session.get(url_w1, headers=self.headers, timeout=15)
                 res_w2 = self.session.get(url_w2, headers=self.headers, timeout=15)
 
@@ -92,12 +87,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         def _parse_schule_dk_json(self, raw_data, child_name):
             stundenplan_woche = []
             if not isinstance(raw_data, dict):
-                _LOGGER.warning("[%s] raw_data ist kein dict, sondern %s", child_name, type(raw_data))
                 return stundenplan_woche
 
             wochen_liste = raw_data.get("wochen", [])
-            _LOGGER.info("[%s] Gefundene Wochen in JSON: %s", child_name, len(wochen_liste))
-
             for woche in wochen_liste:
                 tage_liste = woche.get("tage", [])
                 for tag in tage_liste:
