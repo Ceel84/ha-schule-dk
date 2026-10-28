@@ -15,11 +15,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     hass.data.setdefault(DOMAIN, {})
 
-    # Korrigiert: async_forward_entry_setups mit 'async_' am Anfang
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # Universeller Aufruf (unterstützt alte und neue HA-Versionen)
+    if hasattr(hass.config_entries, "async_forward_entry_setups"):
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    else:
+        for platform in PLATFORMS:
+            hass.async_create_task(
+                hass.config_entries.async_forward_entry_setup(entry, platform)
+            )
     
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Entlädt die Integration."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if hasattr(hass.config_entries, "async_unload_platforms"):
+        return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    return True
