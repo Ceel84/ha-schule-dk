@@ -15,8 +15,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     hass.data.setdefault(DOMAIN, {})
 
-    # Leitet das Laden an die sensor.py weiter
-    await hass.config_entries.forward_entry_setups(entry, PLATFORMS)
+    # Korrigiert: async_forward_entry_setups mit 'async_' am Anfang
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     
     return True
 
